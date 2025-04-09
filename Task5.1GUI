@@ -1,0 +1,78 @@
+import RPi.GPIO as GPIO
+import tkinter as tk
+from tkinter import font
+
+# Setup GPIO
+GPIO.setmode(GPIO.BCM)
+LED_PINS = {'Red': 17, 'Green': 27, 'Blue': 22}
+
+for pin in LED_PINS.values():
+    GPIO.setup(pin, GPIO.OUT)
+    GPIO.output(pin, GPIO.LOW)
+
+# Turn on selected LED and turn off others
+def turn_on_led():
+    selected = led_var.get()
+    for color, pin in LED_PINS.items():
+        GPIO.output(pin, GPIO.HIGH if color == selected else GPIO.LOW)
+
+# Exit cleanup
+def exit_app():
+    GPIO.cleanup()
+    window.destroy()
+
+# GUI setup
+window = tk.Tk()
+window.title("LED Controller")
+window.geometry("300x250")
+window.configure(bg="#1e1e2f")  # Dark background
+
+# Custom font
+header_font = font.Font(family="Helvetica", size=16, weight="bold")
+button_font = font.Font(family="Helvetica", size=12)
+
+# Title Label
+tk.Label(window, text="Choose an LED to turn on", bg="#1e1e2f", fg="white", font=header_font).pack(pady=15)
+
+led_var = tk.StringVar()
+led_var.set(None)
+
+# Colors for buttons
+led_colors = {
+    "Red": "#ff4c4c",
+    "Green": "#4cff4c",
+    "Blue": "#4c9aff"
+}
+
+# Create radio buttons for LEDs
+for color, hex_color in led_colors.items():
+    tk.Radiobutton(
+        window,
+        text=color,
+        variable=led_var,
+        value=color,
+        command=turn_on_led,
+        font=button_font,
+        bg="#1e1e2f",
+        fg=hex_color,
+        selectcolor="#2e2e3f",
+        activeforeground=hex_color,
+        activebackground="#2e2e3f"
+    ).pack(anchor=tk.W, padx=30, pady=5)
+
+# Exit button
+tk.Button(
+    window,
+    text="Exit",
+    command=exit_app,
+    font=button_font,
+    bg="#ff6666",
+    fg="white",
+    activebackground="#cc0000",
+    activeforeground="white",
+    relief=tk.RAISED,
+    padx=10,
+    pady=5
+).pack(pady=20)
+
+window.mainloop()
