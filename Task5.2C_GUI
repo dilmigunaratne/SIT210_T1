@@ -1,0 +1,62 @@
+import tkinter as tk
+import RPi.GPIO as GPIO
+
+# Setup GPIO
+GPIO.setmode(GPIO.BCM)
+led_pins = [17, 27, 22]
+for pin in led_pins:
+    GPIO.setup(pin, GPIO.OUT)
+
+# Setup PWM for each pin
+pwm = [GPIO.PWM(pin, 1000) for pin in led_pins]
+for p in pwm:
+    p.start(0)  # Start PWM with 0% duty cycle
+
+# Create the GUI window
+root = tk.Tk()
+root.title("LED Intensity Controller")
+root.geometry("400x300")
+root.configure(bg="#1e1e2f")  # Dark background
+
+# Function to update LED intensity
+def update_led(index, val):
+    duty_cycle = int(val)
+    pwm[index].ChangeDutyCycle(duty_cycle)
+
+# Colors for sliders and labels
+slider_colors = ["#ff4c4c", "#4cff72", "#4ca6ff"]  
+label_font = ("Helvetica", 14, "bold")
+
+# Create sliders for each LED with styles
+for i in range(3):
+    tk.Label(root, 
+             text=f"LED {i+1} Intensity", 
+             fg=slider_colors[i], 
+             bg="#1e1e2f", 
+             font=label_font).pack(pady=(10, 0))
+
+    slider = tk.Scale(root, 
+                      from_=0, 
+                      to=100, 
+                      orient=tk.HORIZONTAL, 
+                      length=300, 
+                      sliderlength=20,
+                      troughcolor="#d9d9d9",
+                      fg="white", 
+                      bg="#2a2a3b", 
+                      highlightbackground="#1e1e2f", 
+                      activebackground=slider_colors[i], 
+                      command=lambda val, idx=i: update_led(idx, val))
+    slider.pack(pady=(0, 10))
+
+# Cleanup GPIO on close
+def on_closing():
+    for p in pwm:
+        p.stop()
+    GPIO.cleanup()
+    root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_closing)
+
+# Run the GUI loop
+root.mainloop()
