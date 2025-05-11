@@ -1,0 +1,54 @@
+import speech_recognition as sr
+from gpiozero import LED
+from tkinter import Tk, Label, Button
+import threading
+
+# Initialize GPIO for LED
+led = LED(17)  # GPIO 17 (Pin 11)
+
+# Initialize the recognizer
+recognizer = sr.Recognizer()
+
+# Function to capture voice command
+def listen_command():
+    with sr.Microphone() as source:
+        print("Listening...")
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source)
+
+        try:
+            command = recognizer.recognize_google(audio).lower()
+            print(f"You said: {command}")
+            if "turn on" in command:
+                led.on()
+                update_status("Light: ON")
+            elif "turn off" in command:
+                led.off()
+                update_status("Light: OFF")
+            else:
+                update_status("Command not recognized")
+        except sr.UnknownValueError:
+            update_status("Could not understand audio")
+        except sr.RequestError as e:
+            update_status(f"Could not request results; {e}")
+
+# Function to update GUI status
+def update_status(status):
+    status_label.config(text=status)
+
+# Function for GUI button
+def start_listening():
+    threading.Thread(target=listen_command).start()
+
+# Set up GUI
+root = Tk()
+root.title("RPi Voice Control Light")
+root.geometry("300x150")
+
+status_label = Label(root, text="Light: OFF", font=("Arial", 14))
+status_label.pack(pady=10)
+
+listen_button = Button(root, text="Listen Command", command=start_listening)
+listen_button.pack(pady=10)
+
+root.mainloop()
