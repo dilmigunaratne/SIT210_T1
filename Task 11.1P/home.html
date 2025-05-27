@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Medicine Reminder - Home</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Poppins&display=swap');
+
+  body {
+    margin: 0; 
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #1f4037 0%, #99f2c8 100%);
+    color: #1f4037;
+    min-height: 100vh;
+    padding: 2em;
+  }
+
+  h1 {
+    text-align: center;
+    font-weight: 700;
+    font-size: 2.8rem;
+    margin-bottom: 1em;
+    color: #064635;
+    text-shadow: 1px 1px 2px #b3f0c1;
+  }
+
+  .container {
+    max-width: 500px;
+    margin: 0 auto;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 20px;
+    padding: 2em 3em;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+  }
+
+  .time-box {
+    text-align: center;
+    margin-bottom: 2em;
+  }
+
+  #currentTime {
+    font-size: 3rem;
+    font-weight: 700;
+    color: #064635;
+    letter-spacing: 2px;
+  }
+
+  form label {
+    display: block;
+    font-weight: 600;
+    margin-top: 1em;
+    color: #064635;
+  }
+
+  input[type="time"] {
+    width: 100%;
+    padding: 0.6em;
+    margin-top: 0.3em;
+    font-size: 1.1rem;
+    border-radius: 10px;
+    border: 2px solid #99f2c8;
+    box-sizing: border-box;
+    outline-color: #2575fc;
+  }
+
+  button {
+    margin-top: 2em;
+    width: 100%;
+    padding: 0.8em;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: white;
+    background: #2575fc;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    box-shadow: 0 5px 15px rgba(37, 117, 252, 0.6);
+    transition: background 0.3s ease;
+  }
+
+  button:hover {
+    background: #6a11cb;
+    box-shadow: 0 5px 20px rgba(106, 17, 203, 0.8);
+  }
+
+  .log-link {
+    display: block;
+    text-align: center;
+    margin-top: 2em;
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: #064635;
+    text-decoration: underline;
+  }
+
+  /* Alert Modal Styles */
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+  }
+
+  .modal-content {
+    background-color: #fff;
+    margin: 15% auto;
+    padding: 2em;
+    border-radius: 15px;
+    width: 80%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  }
+
+  .modal-title {
+    color: #d32f2f;
+    font-size: 1.5rem;
+    margin-bottom: 1em;
+  }
+
+  .modal-message {
+    margin-bottom: 1.5em;
+    font-size: 1.1rem;
+  }
+
+  .modal-button {
+    background-color: #4CAF50;
+    color: white;
+    padding: 0.8em 1.5em;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+
+  .modal-button:hover {
+    background-color: #388E3C;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Medicine Reminder</h1>
+
+    <div class="time-box">
+      <h2>Current Time</h2>
+      <p id="currentTime">--:--:--</p>
+    </div>
+
+    <form method="POST" action="/set_time">
+      <label for="morning">Morning Medicine Time:</label>
+      <input type="time" id="morning" name="morning" value="{{ medicine_times.morning }}" required />
+
+      <label for="afternoon">Afternoon Medicine Time:</label>
+      <input type="time" id="afternoon" name="afternoon" value="{{ medicine_times.afternoon }}" required />
+
+      <label for="night">Night Medicine Time:</label>
+      <input type="time" id="night" name="night" value="{{ medicine_times.night }}" required />
+
+      <button type="submit">Update Times</button>
+    </form>
+
+    <a href="/summary" class="log-link">View Medicine Log</a>
+  </div>
+
+  <!-- Alert Modal -->
+  <div id="alertModal" class="modal">
+    <div class="modal-content">
+      <h2 class="modal-title">Medicine Reminder!</h2>
+      <p class="modal-message" id="alertMessage"></p>
+      <button class="modal-button" id="confirmButton">I've Taken My Medicine</button>
+    </div>
+  </div>
+
+  <script>
+    // Clock display
+    function updateClock() {
+      const now = new Date();
+      document.getElementById("currentTime").innerText = now.toLocaleTimeString();
+    }
+    setInterval(updateClock, 1000);
+    window.onload = updateClock;
+
+    // Alert modal elements
+    const modal = document.getElementById("alertModal");
+    const alertMessage = document.getElementById("alertMessage");
+    const confirmButton = document.getElementById("confirmButton");
+
+    // Real-time reminder check
+    let lastAlert = null;
+
+    function checkForAlert() {
+      fetch('/get_alert')
+        .then(response => response.json())
+        .then(data => {
+          if (data.alert && data.alert !== lastAlert) {
+            lastAlert = data.alert;
+            showAlert(data.alert);
+          } else if (!data.alert && lastAlert) {
+            lastAlert = null;
+            hideAlert();
+          }
+        })
+        .catch(err => console.error('Error fetching alert:', err));
+    }
+
+    function showAlert(slot) {
+      alertMessage.textContent = `It's time to take your ${slot} medicine!`;
+      modal.style.display = "block";
+    }
+
+    function hideAlert() {
+      modal.style.display = "none";
+    }
+
+    confirmButton.addEventListener("click", function() {
+      fetch('/medicine_taken', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ compartment: lastAlert })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === "success") {
+          hideAlert();
+          lastAlert = null;
+        }
+      })
+      .catch(error => console.error('Error:', error));
+    });
+
+    // Check for alerts every 5 seconds
+    setInterval(checkForAlert, 5000);
+    window.onload = function() {
+      updateClock();
+      checkForAlert();
+    };
+  </script>
+</body>
+</html>
