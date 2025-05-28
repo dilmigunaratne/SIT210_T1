@@ -79,9 +79,11 @@
     transition: background 0.3s ease;
   }
 
-  button:hover {
+  button:hover,
+  button:focus {
     background: #6a11cb;
     box-shadow: 0 5px 20px rgba(106, 17, 203, 0.8);
+    outline: none;
   }
 
   .log-link {
@@ -94,16 +96,22 @@
     text-decoration: underline;
   }
 
+  .log-link:focus {
+    outline: 3px solid #2575fc;
+    outline-offset: 2px;
+  }
+
   /* Alert Modal Styles */
   .modal {
     display: none;
     position: fixed;
-    z-index: 1;
+    z-index: 9999;
     left: 0;
     top: 0;
     width: 100%;
     height: 100%;
     background-color: rgba(0,0,0,0.5);
+    overflow: auto;
   }
 
   .modal-content {
@@ -115,6 +123,7 @@
     max-width: 400px;
     text-align: center;
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    position: relative;
   }
 
   .modal-title {
@@ -139,110 +148,70 @@
     transition: background-color 0.3s;
   }
 
-  .modal-button:hover {
+  .modal-button:hover,
+  .modal-button:focus {
     background-color: #388E3C;
+    outline: none;
   }
 </style>
 </head>
 <body>
-  <div class="container">
+  <main class="container" role="main" aria-label="Medicine reminder application">
     <h1>Medicine Reminder</h1>
 
-    <div class="time-box">
-      <h2>Current Time</h2>
-      <p id="currentTime">--:--:--</p>
-    </div>
+    <section class="time-box" aria-live="polite" aria-atomic="true" aria-relevant="text">
+      <div>
+  	<h3>Current Time: <span id="current-time"></span></h3>	
+      </div>
+    </section>
 
-    <form method="POST" action="/set_time">
+    <form method="POST" action="/set_time" novalidate>
       <label for="morning">Morning Medicine Time:</label>
-      <input type="time" id="morning" name="morning" value="{{ medicine_times.morning }}" required />
+      <input type="time" id="morning" name="morning" value="{{ medicine_times.morning }}" required aria-required="true" />
 
       <label for="afternoon">Afternoon Medicine Time:</label>
-      <input type="time" id="afternoon" name="afternoon" value="{{ medicine_times.afternoon }}" required />
+      <input type="time" id="afternoon" name="afternoon" value="{{ medicine_times.afternoon }}" required aria-required="true" />
 
       <label for="night">Night Medicine Time:</label>
-      <input type="time" id="night" name="night" value="{{ medicine_times.night }}" required />
+      <input type="time" id="night" name="night" value="{{ medicine_times.night }}" required aria-required="true" />
 
       <button type="submit">Update Times</button>
     </form>
 
-    <a href="/summary" class="log-link">View Medicine Log</a>
-  </div>
+    <a href="/summary" class="log-link" role="link" tabindex="0">View Medicine Log</a>
+  </main>
 
   <!-- Alert Modal -->
-  <div id="alertModal" class="modal">
-    <div class="modal-content">
-      <h2 class="modal-title">Medicine Reminder!</h2>
-      <p class="modal-message" id="alertMessage"></p>
-      <button class="modal-button" id="confirmButton">I've Taken My Medicine</button>
-    </div>
+<div id="alertModal" class="modal">
+  <div class="modal-content">
+    <h2 class="modal-title">Medicine Reminder!</h2>
+    <p class="modal-message" id="alertMessage"></p>
   </div>
+</div>
 
-  <script>
-    // Clock display
-    function updateClock() {
-      const now = new Date();
-      document.getElementById("currentTime").innerText = now.toLocaleTimeString();
-    }
-    setInterval(updateClock, 1000);
-    window.onload = updateClock;
+<script>
+  function showAlert(slot) {
+    alertMessage.textContent = `It's time to take your ${slot} medicine!`;
+    modal.style.display = "block";
 
-    // Alert modal elements
-    const modal = document.getElementById("alertModal");
-    const alertMessage = document.getElementById("alertMessage");
-    const confirmButton = document.getElementById("confirmButton");
-
-    // Real-time reminder check
-    let lastAlert = null;
-
-    function checkForAlert() {
-      fetch('/get_alert')
-        .then(response => response.json())
-        .then(data => {
-          if (data.alert && data.alert !== lastAlert) {
-            lastAlert = data.alert;
-            showAlert(data.alert);
-          } else if (!data.alert && lastAlert) {
-            lastAlert = null;
-            hideAlert();
-          }
-        })
-        .catch(err => console.error('Error fetching alert:', err));
-    }
-
-    function showAlert(slot) {
-      alertMessage.textContent = `It's time to take your ${slot} medicine!`;
-      modal.style.display = "block";
-    }
-
-    function hideAlert() {
+    // Auto close after 10s
+    setTimeout(() => {
       modal.style.display = "none";
-    }
+    }, 10000);
+  }
 
-    confirmButton.addEventListener("click", function() {
-      fetch('/medicine_taken', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ compartment: lastAlert })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.status === "success") {
-          hideAlert();
-          lastAlert = null;
-        }
-      })
-      .catch(error => console.error('Error:', error));
-    });
+  function hideAlert() {
+    modal.style.display = "none";
+  }
 
-    // Check for alerts every 5 seconds
-    setInterval(checkForAlert, 5000);
-    window.onload = function() {
-      updateClock();
-      checkForAlert();
-    };
-  </script>
+  function updateTime() {
+    const now = new Date();
+    document.getElementById('current-time').innerText = now.toLocaleTimeString();
+  }
+  setInterval(updateTime, 1000);
+  updateTime(); // Initial call
+
+</script>
+
 </body>
 </html>
