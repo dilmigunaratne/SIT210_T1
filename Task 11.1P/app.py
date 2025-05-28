@@ -1,49 +1,50 @@
 from flask import Flask, render_template, request, jsonify
+from threading import Timer, Lock, Thread
 from datetime import datetime
-import threading
 import time
+import smbus
 import RPi.GPIO as GPIO
-import atexit
-import paho.mqtt.client as mqtt
+
 
 app = Flask(__name__)
+
 
 BUZZER_PIN = 22
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 GPIO.setup(BUZZER_PIN, GPIO.OUT)
 
-# Store medicine times
-medicine_times = {
-    "morning": "08:00",
-    "afternoon": "13:00",
-    "night": "20:00"
-}
 
-# Log of taken medicines
+# I2C setup
+I2C_ADDRESS = 0x08  # Replace with your Arduino's I2C address
+bus = smbus.SMBus(1)  # 1 indicates /dev/i2c-1
+
+# Globals
+medicine_times = {
+    'morning': '08:00',
+    'afternoon': '13:00',
+    'night': '20:00'
+}
+buzzing = False
+buzzing_lock = Lock()
+current_alert_slot = None
+countdown_timer = None
 taken_log = []
 
-# Control buzzer state
-buzzing = False
-current_alert_slot = None
-buzzing_lock = threading.Lock()
-
-# Ensure buzzer is off and GPIO is cleaned up
-def shutdown():
-    global buzzing
-    with buzzing_lock:
-        buzzing = False
-        GPIO.output(BUZZER_PIN, GPIO.LOW)
-    GPIO.cleanup()
-    print("[INFO] GPIO cleaned up.")
-
-atexit.register(shutdown)
-
+# Buzzer control 
 def buzzer_on():
-    GPIO.output(BUZZER_PIN, GPIO.HIGH)
+    try:
+        GPIO.output(BUZZER_PIN, GPIO.HIGH)
+        print("[BUZZER] ON")
+    except Exception as e:
+        print(f"[ERROR] Buzzer ON failed: {e}")
 
 def buzzer_off():
-    GPIO.output(BUZZER_PIN, GPIO.LOW)
+    try:
+        GPIO.output(BUZZER_PIN, GPIO.LOW)
+        print("[BUZZER] OFF")
+    except Exception as e:
+        print(f"[ERROR] Buzzer OFF failed: {e}")
 
 def buzzer_loop():
     global buzzing
@@ -53,80 +54,100 @@ def buzzer_loop():
         buzzer_off()
         time.sleep(0.5)
 
-# Check medicine time every 30 seconds
-def check_medicine_schedule():
-    global buzzing, current_alert_slot
-    while True:
-        now = datetime.now().strftime('%H:%M')
-        with buzzing_lock:
-            if not buzzing:
-                for slot, slot_time in medicine_times.items():
-                    if now == slot_time:
-                        buzzing = True
-                        current_alert_slot = slot
-                        threading.Thread(target=buzzer_loop, daemon=True).start()
-                        break
-        time.sleep(30)
+def log_dose(slot, status):
+    taken_log.append({
+        'slot': slot,
+        'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'status': status
+    })
 
+def trigger_reminder(slot):
+    global current_alert_slot, countdown_timer, buzzing
+    print(f"[INFO] Triggering reminder for {slot}")
+    with buzzing_lock:
+        current_alert_slot = slot
+        buzzing = True
+        Thread(target=buzzer_loop, daemon=True).start()
+        app.config['CURRENT_ALERT'] = slot
+
+    # Schedule to stop beeping and start countdown
+    def start_countdown():
+        global buzzing
+        with buzzing_lock:
+            buzzing = False  # This will stop the buzzer loop
+        start_5_minute_window(slot)
+
+    Timer(10, start_countdown).start()
+
+
+def start_5_minute_window(slot):
+    global countdown_timer
+    countdown_timer = Timer(300, mark_missed_dose)
+    countdown_timer.start()
+
+def mark_missed_dose():
+    global current_alert_slot, countdown_timer
+    print(f"[INFO] Dose missed for {current_alert_slot}")
+    log_dose(current_alert_slot, 'missed')
+    with buzzing_lock:
+        buzzer_off()
+        current_alert_slot = None
+        countdown_timer = None
+        app.config['CURRENT_ALERT'] = None
+
+# Flask Routes
 @app.route('/')
 def home():
     return render_template('home.html', medicine_times=medicine_times)
 
-@app.route('/set_time', methods=['POST'])
-def set_time():
-    medicine_times['morning'] = request.form.get('morning')
-    medicine_times['afternoon'] = request.form.get('afternoon')
-    medicine_times['night'] = request.form.get('night')
-    return "Times updated", 302, {'Location': '/'}
-
 @app.route('/get_alert')
 def get_alert():
-    global buzzing, current_alert_slot
-    return jsonify({"alert": current_alert_slot if buzzing else None})
+    return jsonify({'alert': app.config.get('CURRENT_ALERT')})
 
-@app.route('/medicine_taken', methods=['POST'])
-def medicine_taken():
-    global buzzing, current_alert_slot
-    data = request.get_json()
-    slot = data.get('compartment')
-    if slot and buzzing and slot == current_alert_slot:
-        with buzzing_lock:
-            buzzing = False
-            buzzer_off()
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")          
-            taken_log.append({'slot': slot, 'time': timestamp})
-            current_alert_slot = None
-        return jsonify({"status": "success"})
-    return jsonify({"status": "fail"}), 400
-
-def on_connect(client, userdata, flags, rc):
-    print("Connected to MQTT with result code " + str(rc))
-    client.subscribe("medicine/status")
-
-def on_message(client, userdata, msg):
-    message = msg.payload.decode()
-    print("[MQTT] Received:", message)
-    if ":" in message:
-        compartment, status = message.split(":")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        taken_log.append({
-            "slot": compartment.strip(),
-            "status": status.strip(),
-            "time": timestamp
-        })
-
-mqtt_client = mqtt.Client()
-mqtt_client.on_connect = on_connect
-mqtt_client.on_message = on_message
-mqtt_client.connect("localhost", 1883, 60)
-threading.Thread(target=mqtt_client.loop_forever, daemon=True).start()
-
+@app.route('/set_time', methods=['POST'])
+def set_time():
+    medicine_times['morning'] = request.form['morning']
+    medicine_times['afternoon'] = request.form['afternoon']
+    medicine_times['night'] = request.form['night']
+    return render_template('home.html', medicine_times=medicine_times)
 
 @app.route('/summary')
 def summary():
-    return render_template('summary.html', log=taken_log)
+    return render_template("summary.html", log=taken_log)
+
+# Check medicine schedule every 30s
+def check_medicine_schedule():
+    while True:
+        now = datetime.now().strftime("%H:%M")
+        for slot, time_str in medicine_times.items():
+            if now == time_str and app.config.get('CURRENT_ALERT') is None:
+                trigger_reminder(slot)
+        time.sleep(50)
+
+# Arduino I2C listener
+def listen_for_button_press():
+    global countdown_timer, current_alert_slot
+    while True:
+        try:
+            # Read a byte from Arduino
+            button_status = bus.read_byte(I2C_ADDRESS)
+            if button_status == 2:  # Assume Arduino sends 2 when button pressed
+                print("[I2C] Button Pressed received")
+                if current_alert_slot and countdown_timer:
+                    countdown_timer.cancel()
+                    log_dose(current_alert_slot, 'taken')
+                    with buzzing_lock:
+                        buzzer_off()
+                        current_alert_slot = None
+                        countdown_timer = None
+                        app.config['CURRENT_ALERT'] = None
+            time.sleep(1)
+        except Exception as e:
+            print(f"[I2C ERROR] {e}")
+            time.sleep(1)
 
 if __name__ == '__main__':
-    threading.Thread(target=check_medicine_schedule, daemon=True).start()
+    Thread(target=listen_for_button_press, daemon=True).start()
+    Thread(target=check_medicine_schedule, daemon=True).start()
+    app.config['CURRENT_ALERT'] = None
     app.run(host='0.0.0.0', port=5000)
-
