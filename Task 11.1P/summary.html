@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Medicine Summary</title>
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 60%;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #aaa;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    .missed {
+      background-color: #fdd;
+    }
+    .taken {
+      background-color: #dfd;
+    }
+  </style>
+</head>
+<body>
+  <h2>Medicine Intake Summary</h2>
+  <div id="clock"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Slot</th>
+        <th>Status</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in log %}
+        <tr class="{{ entry.status }}">
+          <td>{{ entry.slot }}</td>
+          <td>{{ entry.status | capitalize }}</td>
+          <td>{{ entry.time }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <script>
+    function updateClock() {
+      const now = new Date();
+      const timeString = now.toLocaleTimeString();
+      document.getElementById('clock').textContent = `Current Time: ${timeString}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+  </script>
+</body>
+</html>
